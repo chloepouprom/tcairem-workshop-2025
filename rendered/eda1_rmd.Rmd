@@ -29,7 +29,9 @@ knitr::opts_chunk$set(message = FALSE, echo = TRUE, warning = FALSE)
 -   If you want to follow along with the code:
 
     -   Log in to the research environment.
-
+    
+    - Copy the `gim-workshop-us-central1-irudo/hdn` folder to your home directory.
+     
     -   Check that you have the required packages.
 
 ```{r eval=FALSE, echo = TRUE}
