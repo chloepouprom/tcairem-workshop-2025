@@ -19,6 +19,16 @@ knitr::opts_chunk$set(message = FALSE, echo = TRUE, warning = FALSE)
 
 # Intro
 
+## Follow along
+
+- Github: https://github.com/chloepouprom/tcairem-workshop-2025
+
+- The slides! Rendered slides (HTML format) are on the research environment
+
+- The Rmd file(s)
+
+- The rendered HTML report from the Rmd file(s)
+
 ## Before we get started
 
 -   If you want to follow along with the code:

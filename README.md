@@ -1,5 +1,7 @@
 # St. Michael's Hospital General Internal Medicine Dataset 
 
+Github link: https://github.com/chloepouprom/tcairem-workshop-2025
+
 ## Setup
 
 - Copy the `hdn/` folder over to your home directory.
