@@ -63,7 +63,7 @@ set.seed(123)
 ```
 
 ```{r}
-DATA_DIR <- "gcs"
+DATA_DIR <- "../gcs"
 PROCESSED_DATA_DIR <- file.path(DATA_DIR, "pre-processed")
 RAW_DATA_DIR <- file.path(DATA_DIR, "raw-data")
 encounters <- rbind(

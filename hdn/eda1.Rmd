@@ -185,7 +185,7 @@ install.packages(c("tidymodels", "glmnet"))
 **Note**: If you want to be able to run this, update the `DATA_DIR` variable so that it points to the folder where the dataset is saved.
 
 ```{r}
-DATA_DIR <- "gcs"
+DATA_DIR <- "../gcs"
 PROCESSED_DATA_DIR <- file.path(DATA_DIR, "pre-processed")
 RAW_DATA_DIR <- file.path(DATA_DIR, "raw-data")
 ```
