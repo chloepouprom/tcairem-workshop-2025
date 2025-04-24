@@ -1,0 +1,68 @@
+/*-- scss:defaults --*/
+
+
+/*-- scss:rules --*/
+
+.reveal:has(section.hdn.present) {
+    background-image: url(tcairem_hdn_icon.png);
+    background-repeat: no-repeat;
+    background-position: top right;
+    background-size: 12rem;
+}
+
+.reveal:has(section.rendered.present) {
+    background-image: url(tcairem_rendered_icon.png);
+    background-repeat: no-repeat;
+    background-position: top right;
+    background-size: 12rem;
+}
+
+.reveal:has(section.fast.present) {
+    background-image: url(tcairem_fast_icon.png);
+    background-repeat: no-repeat;
+    background-position: top right;
+    background-size: 10rem;
+}
+
+.reveal:has(section.skip.present) {
+    background-image: url(tcairem_skip_icon.png);
+    background-repeat: no-repeat;
+    background-position: top right;
+    background-size: 12rem;
+}
+
+.hdn h2:after {
+  content: '[let\'s go to the research environment]';
+  font-size: 0.8rem;
+  color: grey;
+  font-weight: bold;
+  padding-left: 3rem;
+}
+
+.rendered h2:after {
+  content: '[let\'s look at the rendered Rmd]';
+  font-size: 0.8rem;
+  color: grey;
+  font-weight: bold;
+  padding-left: 3rem;
+}
+
+.skip h2:after {
+  content: '[skipping!]';
+  font-size: 0.8rem;
+  color: grey;
+  font-weight: bold;
+  padding-left: 3rem;
+}
+
+
+.fast h2:after {
+  content: '[gonna speed through this! refer to the slides or rendered Rmd!]';
+  font-size: 0.8rem;
+  color: grey;
+  font-weight: bold;
+  padding-left: 3rem;
+}
+
+
+

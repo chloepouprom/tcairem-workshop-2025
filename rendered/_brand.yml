@@ -1,0 +1,52 @@
+# Last updated: April 3, 2025
+
+meta:
+  name: DSAA
+  links:
+    home: https://unityhealth.to/about-unity-health/ai-at-unity-health/
+
+logo:
+  small:
+    light: logos/UHT_small_symbol_colour.png
+    dark: logos/UHT_small_symbol_white.png
+  #
+  # unfortunatley an all colour .png was not available for medium logo
+  medium:
+    light: logos/UHT_medium_logo_purple.png
+    dark: logos/UHT_medium_logo_white.png
+  #
+  # we only have one DSAA logo, and its only suited for white backgrounds
+  large: 
+    light: logos/DSAA_logo_large.png
+    dark: logos/UHT_large_logo_white.png
+
+color:
+  palette:
+    uhtpurple: "#563E82"
+    uhtteal: "#2C8D9E"
+    uhtblue: "#005f9f"
+    uhtorange: "#EB6F0A"
+    white: "#FFFFFF"
+    black: "#2D2926"
+  primary: uhtpurple
+  # additional exploration needs to be done on the effects of the secondary adn tertiary colours.
+  # secondary: uhtorange
+  # tertiary:  uhtteal
+
+typography:
+  fonts:
+    - family: Mark Pro Light
+  base:
+    family: Mark Pro Light
+  headings:
+    family: Mark Pro Light
+    weight: bold
+    color: uhtpurple
+  link:
+    decoration: underline
+# output of code chunks
+  monospace-block:
+    color: black
+# inline `code`
+  monospace-inline:
+    color: uhtorange

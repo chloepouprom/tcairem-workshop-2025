@@ -1,0 +1,753 @@
+---
+title: "St. Michael's Hospital General Internal Medicine Dataset (2)"
+subtitle: "Health Data Nexus Workshop"
+date: "April 25, 2025"
+author: "Chloe Pou-Prom"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    toc_depth: 2
+    theme: readable
+    highlight: kate
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, echo = TRUE, warning = FALSE)
+```
+
+In the previous report, we explored the raw unprocessed tables. The GIM Dataset contains both raw and pre-processed tables. In this report, we will briefly go over the the available pre-processed tables, then we will work towards building a simple model. In order to do so, we will go through the steps required to process the data:
+
+- Process the outcomes data
+
+- Create a patient timeline
+
+- Process the vitals data
+
+- Build a model to predict deterioration from vitals
+
+# Data processing
+
+The dataset is provided in its original, raw form as well as in a pre-processed form which aggregates data into fixed time windows. Pre-processing is done as follows:
+
+- **Time-varying data is binned into 8 hour windows**
+
+- **Numeric data is averaged within each window, trimmed, and normalized**. Two variables are added: an indicator for measurement, and a time since last measurement
+
+- **Missing numeric data is carried forward with mean imputation**
+
+- Orders are given as indicator variable
+
+- Missing orders are imputed as zero
+
+- Medications are grouped into classes and then classes are given as indicator variables
+
+# Let's process some data!
+
+
+Load in the relevant packages:
+
+```{r}
+library(dplyr) # for data processing
+library(ggplot2) # for plotting
+library(knitr) # for rendering nice tables
+library(DT)
+```
+
+Since we will be sampling data, we set the seed to ensure reproducibility:
+
+```{r}
+set.seed(123)
+```
+
+```{r}
+DATA_DIR <- "gcs"
+PROCESSED_DATA_DIR <- file.path(DATA_DIR, "pre-processed")
+RAW_DATA_DIR <- file.path(DATA_DIR, "raw-data")
+encounters <- rbind(
+  # read.csv(file.path(RAW_DATA_DIR, "train", "train_encounters.csv")),
+  # read.csv(file.path(RAW_DATA_DIR, "valid", "valid_encounters.csv")),
+  read.csv(file.path(RAW_DATA_DIR, "test", "test_encounters.csv"))
+)
+measurements <- rbind(
+  # read.csv(file.path(RAW_DATA_DIR, "train", "train_numeric_variables.csv")),
+  # read.csv(file.path(RAW_DATA_DIR, "valid", "valid_numeric_variables.csv")),
+  read.csv(file.path(RAW_DATA_DIR, "test", "test_numeric_variables.csv"))
+)
+
+```
+
+## Outcomes timeseries
+
+The outcomes data is provided as a time-varying table:
+
+```{r}
+
+outcomes <- rbind(
+  # read.csv(file.path(PROCESSED_DATA_DIR, "train", "train_outcome_timeseries_8hr.csv")),
+  # read.csv(file.path(PROCESSED_DATA_DIR, "valid", "valid_outcome_timeseries_8hr.csv")),
+  read.csv(file.path(PROCESSED_DATA_DIR, "test", "test_outcome_timeseries_8hr.csv"))
+)
+
+outcomes %>% 
+  head() %>%
+  kable()
+```
+
+How did we get here?
+
+- Time-varying data is binned into 8-hour windows starting from the time the patient enters the GIM ward. The timeline ends when the patient experiences one of the outcomes.
+
+- Outcome is defined as the first occurrence of any of the following events (i.e. if a patient transfers to the ICU and then dies, their outcome will be ICU transfer). 
+
+## Creating a patient timeline
+
+Let's start with an example on 1 patient
+
+```{r}
+example_enc <- encounters %>% 
+  filter(OUTCOME_ALL == 1) %>%
+  select(ENCOUNTER_NUM, OUTCOME_ALL, time_to_event) %>%
+  head(1)
+example_enc %>% 
+  kable()
+```
+
+
+The timeline will have 1 row for ever hour the patient is in the hospital. We later want to group the timeline into **8-hour windows**. In order to do this, I create an indicated variable `window_8hr` which will assign a different value to each 8-hour block.
+
+```{r}
+timeline_hours <- seq(1, ceiling(example_enc$time_to_event))
+
+example_timeline <- tibble(
+  ENCOUNTER_NUM = example_enc$ENCOUNTER_NUM,
+  hour = seq(1, ceiling(example_enc$time_to_event)),
+) %>%
+  mutate(
+  #   a = hour %% 8, # modulo
+  #   b = hour %% 8 == 1,
+  #   c = cumsum(hour),
+  #   d = cumsum(hour %% 8 == 1),
+    window_8hr = paste0("hour_", cumsum((hour) %% 8 == 1)))
+
+example_timeline %>% 
+  head()
+```
+
+We can then start merging events to our timeline.
+
+First, we add the encounter to the timeline:
+
+```{r}
+
+outcome_hour <- ceiling(example_enc$time_to_event)
+
+example_timeline %>% 
+  mutate(outcome_all = ifelse(hour == outcome_hour, 1, 0))
+```
+Next, we'll add the vitals.
+
+But first, let's process the vitals a bit.
+
+Let's extract some summary statistics for the vitals:
+
+
+```{r}
+measurements_summary <- measurements %>%
+  group_by(variable) %>%
+  summarize(
+    mean = mean(numeric_value),
+    q01 = quantile(numeric_value, probs = 0.01),
+    q99 = quantile(numeric_value, probs = 0.99)
+  )
+
+example_vitals <- measurements %>%
+  filter(variable %in% c("vital_sbpdiastolic", "vital_sbpsystolic", "vital_sfio2", "vital_s02saturation", "vital_spulse", "vital_srespirations", "vital_stemperature")) %>%
+  filter(ENCOUNTER_NUM  == example_enc$ENCOUNTER_NUM)
+
+```
+
+
+Transform the vitals data: instead of one row per event, we want one row per hour
+
+```{r}
+example_vitals_hour <- example_vitals %>%
+  left_join(measurements_summary, by = "variable") %>%
+  
+  # Trim measurements
+  mutate(
+    trimmed_value = case_when(
+      numeric_value <= q01 ~ q01,
+      numeric_value >= q99 ~ q99,
+      TRUE ~ numeric_value
+    )
+  ) %>%
+  select(-q01, -q99, -mean, -numeric_value) %>%
+  
+  # Group by the hour and take the average
+  mutate(hour = ceiling(time)) %>%
+  select(-time) %>%
+  group_by(ENCOUNTER_NUM, variable, hour) %>%
+  summarize_all(mean) %>%
+  ungroup() %>%
+  
+  # Pivot from long to wide dataframe
+  tidyr::pivot_wider(names_from = variable, values_from = trimmed_value) %>%
+  arrange(hour)
+```
+
+
+Hourly vitals data can then be merged to the hourly timeline and we can apply _last observation carried forward_
+
+```{r}
+
+example_vitals_timeline <- example_timeline %>%
+  left_join(example_vitals_hour, by = c("ENCOUNTER_NUM", "hour")) 
+
+example_processed_vitals_timeline <- example_vitals_timeline %>%
+  
+  # LOCF
+  tidyr::fill(contains('vital_')) %>%
+  select(-hour) %>%
+  
+  # Group by 8-hour window and take mean
+  group_by(ENCOUNTER_NUM, window_8hr) %>%
+  summarize_all(mean) %>%
+  ungroup() %>%
+  
+  # Transform back to a long dataframe, so that this can be merged with the summary
+  tidyr::pivot_longer(cols = contains("vital_"), names_to = "variable") %>%
+  left_join(measurements_summary, by = "variable") %>%
+  mutate(filled_value = ifelse(is.na(value), mean, value)) %>%
+  
+  # Normalize
+  mutate(normalized_value = (value - q01) / (q99 - q01)) %>%
+  select(ENCOUNTER_NUM, window_8hr, variable, normalized_value) %>%
+  
+  # Transform back to a wide dataframe
+  tidyr::pivot_wider(names_from = variable, values_from = normalized_value)
+
+```
+
+The final result:
+
+```{r}
+example_vitals_timeline %>%
+  datatable(caption = "Example vitals timeline")
+```
+
+```{r}
+example_processed_vitals_timeline %>%
+  datatable(caption = "Example processed vitals timeline")
+```
+
+Whew... that was for just one encounter. Let's do it for all encounters!
+
+# Processing vitals for all patients
+
+First, create the timeline
+
+```{r}
+all_encounters_timeline_list <- list()
+for (i in 1:nrow(encounters)) {
+  encounter <- encounters %>%
+    slice(i)
+  
+  # For each encounter, we're going 
+  # to create a timeline starting from
+  # 1 to the time of the event
+  encounter_timeline <- tibble (
+    ENCOUNTER_NUM = encounter$ENCOUNTER_NUM,
+    hour = seq(1, ceiling(encounter$time_to_event))
+  ) %>%
+    mutate(window_8hr = cumsum((hour ) %% 8 == 1))
+  all_encounters_timeline_list[[i]] <- encounter_timeline
+}
+all_timeline <- do.call(rbind, all_encounters_timeline_list)
+```
+
+```{r}
+all_timeline %>%
+  head() %>%
+  kable()
+```
+This tells us how long each patient's timeline is (i.e., how long the encounter is)
+```{r}
+all_timeline %>%
+  count(ENCOUNTER_NUM) %>%
+  head() %>%
+  kable()
+```
+
+```{r}
+all_vitals <- measurements %>%
+  filter(variable %in% c("vital_sbpdiastolic", "vital_sbpsystolic", "vital_sfio2", "vital_s02saturation", "vital_spulse", "vital_srespirations", "vital_stemperature"))
+```
+
+Summarize at the hourly interval
+
+```{r}
+
+all_vitals_hour <- all_vitals %>%
+  left_join(measurements_summary, by = "variable") %>%
+  mutate(
+    numeric_value = case_when(
+      numeric_value <= q01 ~ q01,
+      numeric_value >= q99 ~ q99,
+      TRUE ~ numeric_value
+    )
+  ) %>%
+  select(-q01, -q99, -mean)%>%
+  
+  mutate(hour = ceiling(time)) %>%
+  select(-time) %>%
+  group_by(ENCOUNTER_NUM, variable, hour) %>%
+  summarize_all(mean) %>%
+  ungroup() %>%
+  tidyr::pivot_wider(names_from = variable, values_from = numeric_value) %>%
+  arrange(hour)
+```
+
+Join to the hourly timeline
+
+```{r}
+all_vitals_timeline <- all_timeline %>%
+  left_join(all_vitals_hour, by = c("ENCOUNTER_NUM", "hour")) 
+```
+
+Process:
+```{r}
+all_processed_vitals_timeline <- all_vitals_timeline %>%
+  
+  # LOCF
+  tidyr::fill(contains('vital_')) %>%
+  select(-hour) %>%
+  
+  # Group by encounter number and window,
+  # summarize by mean
+  group_by(ENCOUNTER_NUM, window_8hr) %>%
+  summarize_all(mean) %>%
+  ungroup() %>%
+  
+  # Normalize the measurements
+  tidyr::pivot_longer(cols = contains("vital_"), names_to = "variable") %>%
+  left_join(measurements_summary, by = "variable") %>%
+  mutate(filled_value = ifelse(is.na(value), mean, value)) %>%
+  mutate(normalized_value = (filled_value - q01) / (q99 - q01)) %>%
+  
+  # Transform back to a wide dataframe
+  select(ENCOUNTER_NUM, window_8hr, variable, normalized_value) %>%
+  tidyr::pivot_wider(names_from = variable, values_from = normalized_value)
+```
+
+```{r}
+all_processed_vitals_timeline %>%
+  head(50) %>%
+  datatable()
+```
+
+
+## Creating the outcomes timeline
+
+We have a processed timeline of vitals. Let's get a a timeline of outcomes! Once we have that, we'll have all we need to train a model.
+
+In order to create the outcomes timeline, we will use `encounters` and `all_timeline` (previously created).
+
+```{r}
+encounters %>%
+  select(ENCOUNTER_NUM, OUTCOME_ALL, time_to_event) %>%
+  head() %>%
+  kable()
+```
+
+```{r}
+all_timeline %>%
+  head() %>%
+  kable()
+```
+
+Let's get the hour when the outcome happens:
+
+```{r}
+outcome_hour <- encounters %>%
+  select(ENCOUNTER_NUM, OUTCOME_ALL, time_to_event) %>%
+  filter(OUTCOME_ALL == 1) %>%
+  mutate(outcome_hour = as.integer(ceiling(time_to_event))) %>%
+  select(ENCOUNTER_NUM, OUTCOME_ALL, outcome_hour)
+
+outcome_hour %>%
+  head() %>%
+  kable()
+
+```
+
+Let's merge this back with the timeline and create the following columns:
+
+- `outcome_24hrs`: the outcome occurs in the next 24 hours
+
+- `outcome_48hrs`: the outcome occurs in the next 48 hours
+
+- `outcome_72hrs`: the outcome occurs in the next 72 hours
+
+```{r}
+all_outcomes_timeline <- all_timeline %>%
+  left_join(outcome_hour, by = c("ENCOUNTER_NUM")) %>%
+  mutate(OUTCOME_ALL = as.integer(ifelse(is.na(OUTCOME_ALL), 0, OUTCOME_ALL))) %>%
+  group_by(ENCOUNTER_NUM) %>%
+  arrange(hour) %>%
+  mutate(
+    outcome_24hrs = as.integer(ifelse(OUTCOME_ALL == 1 & outcome_hour - hour <= 24, 1, 0)),
+    outcome_48hrs = as.integer(ifelse(OUTCOME_ALL == 1 & outcome_hour - hour <= 48, 1, 0)),
+    outcome_72hrs = as.integer(ifelse(OUTCOME_ALL == 1 & outcome_hour - hour <= 24, 1, 0))
+  ) %>%
+  ungroup() 
+
+all_outcomes_timeline %>% 
+  filter(OUTCOME_ALL == 1) %>%
+  arrange(ENCOUNTER_NUM, hour) %>%
+  head(50) %>%
+  datatable()
+```
+Bin into 8-hour windows:
+
+```{r}
+all_processed_outcomes_timeline <- all_outcomes_timeline %>%
+  group_by(ENCOUNTER_NUM, window_8hr) %>%
+  summarize(
+    OUTCOME_ALL = max(OUTCOME_ALL),
+    outcome_24hrs = max(outcome_24hrs),
+    outcome_48hrs = max(outcome_48hrs),
+    outcome_72hrs = max(outcome_72hrs)
+  )  %>%
+  ungroup()
+```
+
+## Preventing label leakage
+
+What is label leakage?
+
+- Label leakage occurs when outcomes labels get "leaked" into model inputs.
+
+- Example from https://pmc.ncbi.nlm.nih.gov/articles/PMC7233077/
+
+> Consider predicting mortality of hospital patients using all available data up until their time of death. Such a task could lead to a pathological prediction rule—”if the ventilator is turned off in the preceding hour, predict death.” This commonly happens when patients and their families decide to withdraw care at a terminal stage of illness. A machine learning algorithm trained naively on this signal would have high predictive performance by nearly any metric, yet absolutely no clinical utility. 
+
+How do we avoid this? Let's remove 6 hours before the outcome from the timeline
+
+
+First, we address the hourly timeline:
+
+```{r}
+all_outcomes_timeline <- all_timeline %>%
+  left_join(outcome_hour, by = c("ENCOUNTER_NUM")) %>%
+  mutate(OUTCOME_ALL = as.integer(ifelse(is.na(OUTCOME_ALL), 0, OUTCOME_ALL))) %>%
+  group_by(ENCOUNTER_NUM) %>%
+  arrange(hour) %>%
+  mutate(
+    last_window = max(hour),
+    outcome_24hrs = as.integer(ifelse(OUTCOME_ALL == 1 & outcome_hour - hour <= 24, 1, 0)),
+    outcome_48hrs = as.integer(ifelse(OUTCOME_ALL == 1 & outcome_hour - hour <= 48, 1, 0)),
+    outcome_72hrs = as.integer(ifelse(OUTCOME_ALL == 1 & outcome_hour - hour <= 24, 1, 0))
+  ) %>%
+  ungroup() %>%
+  mutate(
+    keep_row = case_when(
+      OUTCOME_ALL == 0 ~ 1,
+      OUTCOME_ALL == 1 & last_window - hour >= 6 ~ 1,
+      TRUE ~ 0
+    )
+  ) %>%
+  filter(keep_row == 1) %>%
+  select(-keep_row)
+```
+
+Then, we can address the 8-hour timeline:
+
+```{r}
+
+all_processed_outcomes_timeline <- all_outcomes_timeline %>%
+  group_by(ENCOUNTER_NUM, window_8hr) %>%
+  summarize(
+    OUTCOME_ALL = max(OUTCOME_ALL),
+    outcome_24hrs = max(outcome_24hrs),
+    outcome_48hrs = max(outcome_48hrs),
+    outcome_72hrs = max(outcome_72hrs)
+  )  %>%
+  ungroup() 
+```
+
+## Model data
+
+```{r}
+
+model_df <- all_processed_outcomes_timeline %>% 
+  left_join(all_processed_vitals_timeline, by = c("ENCOUNTER_NUM", "window_8hr")) %>%
+  mutate(
+    OUTCOME_ALL = as.factor(OUTCOME_ALL),
+    outcome_24hrs = as.factor(outcome_24hrs),
+    outcome_48hrs = as.factor(outcome_48hrs),
+    outcome_72hrs = as.factor(outcome_72hrs)
+  )
+```
+
+
+## Let's train a model!
+
+We'll use the `tidymodels` package. If you're interested in learning more, [this book is a great resource](https://www.tmwr.org/).
+
+```{r}
+library(tidymodels)
+```
+
+We split the data into an 80/20 split.
+
+The `group` variable ensures all observations with the same group value (i.e., `ENCOUNTER_NUM`) end up in the same split.
+
+```{r}
+train_test_split <- group_initial_split(
+  model_df, 
+  prop = 0.8, 
+  strata = "OUTCOME_ALL", 
+  group = "ENCOUNTER_NUM"
+)
+training_df <- training(train_test_split)
+testing_df <- testing(train_test_split)
+```
+
+
+We are going to train a model 
+
+```{r}
+model_formula <- as.formula(outcome_48hrs ~ vital_sbpdiastolic + vital_sbpsystolic + vital_spulse + vital_srespirations + vital_stemperature + vital_sfio2)
+```
+
+We use the `glmnet` package to train a logistic regression model:
+
+- The `penalty` parameter specifies the amount of regularization.
+
+- The `mixture` parameter specifies the type of regularization, i.e., the proportion of lasso penalty (1 = lasso model, 0 = ridge regression, anywhere between 0 and 1 is an elastic net model)
+
+```{r}
+
+lr_mod <- 
+  logistic_reg(penalty = tune(), mixture = tune()) %>% 
+  set_engine("glmnet")
+
+lr_recipe <- recipe(model_formula, data = training_df)
+lr_workflow <- workflow() %>% 
+  add_model(lr_mod) %>%
+  add_recipe(lr_recipe)
+
+```
+
+Let's tune hyperparameters!
+
+One way to do this is through **grid search**, but this might be long...
+
+```{r}
+cv_folds <- vfold_cv(training_df, strata = outcome_48hrs, v = 5)
+```
+
+```{r}
+# # Grid search
+# lr_reg_grid <- grid_regular(penalty(range = c(-4, -2)), levels = 100) %>%
+#   expand_grid(mixture = c(0, 0.25, 0.5, 0.75, 1))
+# 
+# lr_res <-
+#   lr_workflow %>%
+#   tune_grid(cv_folds,
+#             grid = lr_reg_grid,
+#             control = control_grid(save_pred = TRUE),
+#             metrics = metric_set(roc_auc))
+# 
+# lr_res %>%
+#   collect_metrics() %>%
+#   ggplot(aes(x = penalty, y = mean)) +
+#   facet_wrap(. ~ mixture) +
+#   geom_point() +
+#   geom_line() +
+#   ylab("Area under the ROC Curve") +
+#   scale_x_log10(labels = scales::label_number()) +
+#   theme_minimal()
+# 
+# 
+# 
+```
+
+An alternative way to tune this is through Bayes tuning:
+
+```{r}
+
+# Bayes tuning
+lr_res <- lr_workflow %>%
+  tune_bayes(cv_folds,
+            iter = 100,
+            initial = 5,
+            control = control_bayes(save_pred = TRUE),
+            metrics = metric_set(roc_auc))
+```
+
+```{r}
+
+# Ended up running for x iterations only
+lr_res %>%
+    nrow()
+```
+
+```{r}
+lr_res %>%
+  collect_metrics() %>%
+  ggplot(aes(x = penalty, y = mean)) +
+  geom_point() +
+  geom_line() +
+  ylab("Area under the ROC Curve") +
+  scale_x_log10(labels = scales::label_number()) +
+  theme_minimal()
+
+lr_res %>%
+  collect_metrics() %>%
+  ggplot(aes(x = mixture, y = mean)) +
+  geom_point() +
+  geom_line() +
+  ylab("Area under the ROC Curve") +
+  scale_x_log10(labels = scales::label_number()) + 
+  theme_minimal()
+```
+
+After finding the best hyper-parameters, we can then re-fit the model on the whole training data:
+
+```{r}
+lr_best <- lr_res %>%
+  select_best()
+
+lr_best %>%
+  kable()
+
+final_wf <-
+  lr_workflow %>%
+  finalize_workflow(lr_best)
+
+final_fit <- final_wf %>%
+  fit(training_df)
+```
+
+Let's look at results:
+
+```{r}
+
+train_predictions <- final_fit %>%
+    predict(training_df, type = "prob") %>%
+    cbind(training_df)
+test_predictions <- final_fit %>%
+    predict(testing_df, type = "prob") %>%
+    cbind(testing_df)
+
+roc_auc(train_predictions,
+        truth = outcome_24hrs,
+        .pred_1,
+        event_level = "second") %>%
+  kable()
+
+roc_auc(test_predictions,
+        truth = outcome_24hrs,
+        .pred_1,
+        event_level = "second") %>%
+  kable()
+```
+
+```{r}
+final_fit %>%
+  predict(training_df, type = "prob") %>%
+  cbind(training_df) %>%
+  ggplot(aes(x = .pred_1, fill = outcome_48hrs)) +
+  geom_boxplot() +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+final_fit %>%
+  predict(testing_df, type = "prob") %>%
+  cbind(testing_df) %>%
+  ggplot(aes(x = .pred_1, fill = outcome_48hrs)) +
+  geom_boxplot() +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+## XGBoost
+
+Not great!
+
+We can try out XGBoost!
+
+[Tuning parameters](https://parsnip.tidymodels.org/reference/details_boost_tree_xgboost.html)
+
+```{r}
+
+# xgboost_mod <-
+#     boost_tree(trees = tune(),
+#                       min_n = tune(),
+#                       tree_depth = tune(),
+#                       learn_rate = tune(),
+#                       loss_reduction = tune(),
+#                       mtry = tune(), sample_size = tune()) %>%
+#   set_mode("classification") %>%
+#   set_engine("xgboost")
+# 
+# xgboost_recipe <- recipe(model_formula, data = training_df)
+# xgboost_workflow <- workflow() %>%
+#   add_model(xgboost_mod) %>%
+#   add_recipe(xgboost_recipe)
+# xgboost_params <-
+#   tune::parameters(
+#     dials::trees(),
+#     dials::min_n(),
+#     dials::tree_depth(),
+#     dials::learn_rate(),
+#     dials::loss_reduction(),
+#     sample_size = dials::sample_prop(),
+#     mtry = dials::finalize(dials::mtry(), training_df)
+#   )
+# 
+# xgboost_res <- xgboost_workflow %>%
+#   tune_bayes(cv_folds,
+#             iter = 100,
+#             initial = 5,
+#             param_info = xgboost_params,
+#             control = control_bayes(save_pred = FALSE, verbose_iter = TRUE, verbose = TRUE),
+#             metrics = metric_set(roc_auc))
+# 
+# xgboost_best <- xgboost_res %>%
+#   select_best()
+# 
+# xgboost_best %>%
+#   kable()
+# 
+# xgboost_final_wf <-
+#   xgboost_workflow %>%
+#   finalize_workflow(xgboost_best)
+# 
+# xgboost_final_fit <- xgboost_final_wf %>%
+#   fit(training_df)
+# 
+# xgboost_train_predictions <- xgboost_final_fit %>%
+#     predict(training_df, type = "prob") %>%
+#     cbind(training_df)
+# xgboost_test_predictions <- xgboost_final_fit %>%
+#     predict(testing_df, type = "prob") %>%
+#     cbind(testing_df)
+# 
+# roc_auc(xgboost_train_predictions,
+#         truth = outcome_24hrs,
+#         .pred_1,
+#         event_level = "second") %>%
+#   kable()
+# 
+# roc_auc(xgboost_test_predictions,
+#         truth = outcome_24hrs,
+#         .pred_1,
+#         event_level = "second") %>%
+#   kable()
+
+```

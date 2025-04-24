@@ -1,0 +1,7 @@
+*.html
+rendered/*.html
+rendered/*_files/
+.quarto/
+.Rproj.user/
+.Rprofile
+hdn/*.html
