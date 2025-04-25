@@ -2,6 +2,11 @@
 # You can run this line by line by pressing Ctrl + Enter on the selected line
 # Or press on 'Source' button in the top right
 
+# This is a hack!! ggplot wasn't installing because
+# scales (one of its dependencies) updated on April 24...
+install.packages("remotes")
+remotes::install_version("scales", version = "1.3.0")
+
 # Rendering
 install.packages(c("rmarkdown", "markdown"))
 
