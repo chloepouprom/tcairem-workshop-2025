@@ -30,15 +30,36 @@ If ever you run into issues or if you prefer to follow along with already render
 
 ## Resources and links
 
-### About the GIM Dataset 
+The reference for the GIM dataset: Kuzulugil, S., Pou-Prom, C., Mamdani, M., Murray, J., Verma, A., Zhu, K., & Banning, M. (2023). GIM, a dataset for predicting patient deterioration in the General Internal Medicine ward (version 1.0.1). Health Data Nexus. https://doi.org/10.57764/1w7f-kb56.
 
-- 	Kuzulugil, S., Pou-Prom, C., Mamdani, M., Murray, J., Verma, A., Zhu, K., & Banning, M. (2023). GIM, a dataset for predicting patient deterioration in the General Internal Medicine ward (version 1.0.1). Health Data Nexus. https://doi.org/10.57764/1w7f-kb56.
+### About CHARTwatch (the early warning system developed and deployed from this data)
 
+- https://lks-chart.github.io/blog/posts/2023-01-27-with-a-little-help-from-my-friends/
+    - A blog post summarizing how we developed and deployed our early warning system
+ 
+- https://lks-chart.github.io/blog/posts/2022-05-09-ooh-na-na-where-are-my-sodium-labs/
+    - A bug that continues to haunt me  
+
+- Nestor, B., McCoy, L. G., Verma, A. A., Pou-Prom, C., Murray, J., Kuzulugil, S., Dai, D., Mamdani, M., Goldenberg, A., & Ghassemi, M. (2020). Preparing a Clinical Support Model for Silent Mode in General Internal Medicine. Proceedings of the 5th Machine Learning for Healthcare Conference, 950–972. https://proceedings.mlr.press/v126/nestor20a.html
+    - This focuses on model development and looks at some of the different modeling approaches we tried
+ 
+  - Verma, A. A., Pou-Prom, C., McCoy, L. G., Murray, J., Nestor, B., Bell, S., Mourad, O., Fralick, M., Friedrich, J., Ghassemi, M., & Mamdani, M. (2023). Developing and Validating a Prediction Model For Death or Critical Illness in Hospitalized Adults, an Opportunity for Human-Computer Collaboration. Critical Care Explorations, 5(5), e0897. https://doi.org/10.1097/CCE.0000000000000897
+    - Prior to deployment, we compared the model's performance to human performance. 
+
+- Pou-Prom, C., Murray, J., Kuzulugil, S., Mamdani, M., & Verma, A. (2022). From Compute to Care: Lessons Learned from Deploying an Early Warning System into Clinical Practice. Frontiers in Digital Health, 174. https://doi.org/10.3389/fdgth.2022.932123
+    - This describes the deployment of the early warning system, with a focus on the technical requirements (including things like: infrastructure, downtime protocols, etc.) 
+
+- Verma, A. A., Murray, J., Greiner, R., Cohen, J. P., Shojania, K. G., Ghassemi, M., Straus, S. E., Pou-Prom, C., & Mamdani, M. (2021). Implementing machine learning in medicine. CMAJ, 193(34), E1351–E1357. https://doi.org/10.1503/cmaj.202434
+    - This describes the deployment of the early warning system, with a focus on the clinical workflows
+    
 - Verma, A. A., Stukel, T. A., Colacci, M., Bell, S., Ailon, J., Friedrich, J. O., Murray, J., Kuzulugil, S., Yang, Z., Lee, Y., Pou-Prom, C., & Mamdani, M. (2024). Clinical evaluation of a machine learning–based early warning system for patient deterioration. Canadian Medical Association Journal, 196(30), E1027. https://doi.org/10.1503/cmaj.240132
+    - This describes the evaluation of the deployment (i.e., comparing things before CHARTwatch was deployed vs after)
 
-- [AI at Unity Health](https://unityhealth.to/about-unity-health/ai-at-unity-health/)
+
 
 ### R, data science, data analysis, etc
+
+- [AI at Unity Health](https://unityhealth.to/about-unity-health/ai-at-unity-health/)
 
 - [R for Data Science](https://r4ds.hadley.nz/)
 
